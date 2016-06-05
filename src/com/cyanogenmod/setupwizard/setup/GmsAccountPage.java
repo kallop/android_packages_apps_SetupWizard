@@ -27,10 +27,12 @@ import android.app.Fragment;
 import android.app.FragmentManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.service.persistentdata.PersistentDataBlockManager;
 import android.util.Log;
 
+import com.android.setupwizardlib.util.ResultCodes;
 import com.cyanogenmod.setupwizard.R;
 import com.cyanogenmod.setupwizard.SetupWizardApp;
 import com.cyanogenmod.setupwizard.cmstats.SetupStats;
@@ -45,6 +47,7 @@ public class GmsAccountPage extends SetupPage {
 
     public static final String ACTION_RESTORE = "com.google.android.setupwizard.RESTORE";
     public static final String ACTION_PROGRESS = "com.google.android.setupwizard.PROGRESS";
+    public static final String ACTION_VENDOR_SETUP = "com.google.android.setupwizard.VENDOR_SETUP";
     public static final String RESTORE_ACTION_ID = "mfm_restore_start";
     public static final String RESTORE_CHECK_ID = "restore_check";
     public static final String FRAGMENT_START_RESTORE =
@@ -99,13 +102,38 @@ public class GmsAccountPage extends SetupPage {
             getCallbacks().onPreviousPage();
         } else {
             super.doLoadAction(fragmentManager, action);
-            launchGmsAccountSetup();
+            if (!SetupWizardUtils.accountExists(mContext, SetupWizardApp.ACCOUNT_TYPE_GMS)) {
+                launchGmsAccountSetup();
+            } else {
+                // This can happen if the user goes from setup -> restore, but chooses to set
+                // their device up as "new". Thus we need to not re-prompt this entire flow,
+                // skip ahead. CYNGNOS-2459
+                if (SetupWizardApp.DEBUG) {
+                    Log.d(TAG, "Google account already setup, skip gms setup");
+                }
+                setHidden(true);
+                getCallbacks().onNextPage();
+            }
         }
     }
 
     @Override
     public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == SetupWizardApp.REQUEST_CODE_SETUP_GMS && data != null) {
+        if (SetupWizardApp.DEBUG) {
+            Log.d(TAG, "Received activity result from requestCode " + requestCode
+                    + " with a resultCode of " + resultCode);
+            if (data != null) {
+                Bundle extras = data.getExtras();
+                Log.d(TAG, "Within the activity result there were extras:");
+                for (String extra : extras.keySet()) {
+                    Log.d(TAG, "The key " + extra + " has a value of " + extras.get(extra));
+                }
+            }
+        }
+        if (requestCode == SetupWizardApp.REQUEST_CODE_SETUP_GMS &&
+                resultCode == ResultCodes.RESULT_SKIP) {
+            launchGmsVendorSetup();
+        } else if (requestCode == SetupWizardApp.REQUEST_CODE_SETUP_GMS && data != null) {
             if (SetupWizardUtils.isOwner() && resultCode == Activity.RESULT_OK) {
 
                 // If we don't have a restore token and a restore account, then we need to
@@ -123,11 +151,20 @@ public class GmsAccountPage extends SetupPage {
             } else {
                 handleResult(requestCode, resultCode);
             }
-        } else if (requestCode == SetupWizardApp.REQUEST_CODE_RESTORE_GMS) {
+        } else {
+            if (requestCode == SetupWizardApp.REQUEST_CODE_RESTORE_GMS) {
+                setHidden(true);
+            }
             handleResult(requestCode, resultCode);
-            setHidden(true);
         }
         return true;
+    }
+
+    @Override
+    public boolean doNextAction() {
+        final boolean canSkip = canSkip();
+        // return true to force this page to handle the next action.
+        return !canSkip;
     }
 
     @Override
@@ -167,6 +204,9 @@ public class GmsAccountPage extends SetupPage {
     }
 
     private void launchGmsRestorePage(boolean restorePicker) {
+        if (SetupWizardApp.DEBUG) {
+            Log.d(TAG, "Launching gms restore page with restorePicker " + restorePicker);
+        }
         try {
             // GMS can disable this after logging in sometimes
             if (SetupWizardUtils.enableGMSSetupWizard(mContext)) {
@@ -207,6 +247,31 @@ public class GmsAccountPage extends SetupPage {
         }
     }
 
+    private void launchGmsVendorSetup() {
+        if (SetupWizardApp.DEBUG) {
+            Log.d(TAG, "Launching gms vendor setup page");
+        }
+        try {
+            Intent intent = new Intent(ACTION_VENDOR_SETUP);
+            intent.setPackage(SetupWizardUtils.GOOGLE_SETUPWIZARD_PACKAGE);
+            intent.putExtra(SetupWizardApp.EXTRA_ALLOW_SKIP, true);
+            intent.putExtra(SetupWizardApp.EXTRA_USE_IMMERSIVE, true);
+            intent.putExtra(SetupWizardApp.EXTRA_FIRST_RUN, true);
+            intent.putExtra(SetupWizardApp.EXTRA_THEME, SetupWizardApp.EXTRA_MATERIAL_LIGHT);
+            ActivityOptions options =
+                    ActivityOptions.makeCustomAnimation(mContext,
+                            android.R.anim.fade_in,
+                            android.R.anim.fade_out);
+            mFragment.startActivityForResult(
+                    intent,
+                    SetupWizardApp.REQUEST_CODE_VENDOR_SETUP_GMS, options.toBundle());
+            return;
+        } catch (Exception e) {
+            // Move on if the vendor setup activity is not found.
+            getCallbacks().onNextPage();
+        }
+    }
+
     public boolean canSkip() {
         final PersistentDataBlockManager pdbManager = (PersistentDataBlockManager)
                 mContext.getSystemService(Context.PERSISTENT_DATA_BLOCK_SERVICE);
@@ -216,10 +281,16 @@ public class GmsAccountPage extends SetupPage {
     }
 
     private void launchGmsAccountSetup() {
+        if (SetupWizardApp.DEBUG) {
+            Log.d(TAG, "Launching gms account page");
+        }
         Bundle bundle = new Bundle();
         bundle.putBoolean(SetupWizardApp.EXTRA_FIRST_RUN, true);
         bundle.putBoolean(SetupWizardApp.EXTRA_ALLOW_SKIP, true);
         bundle.putBoolean(SetupWizardApp.EXTRA_USE_IMMERSIVE, true);
+        bundle.putBoolean(SetupWizardApp.EXTRA_SUPRESS_D2D_SETUP, !mContext.getPackageManager()
+                .hasSystemFeature(PackageManager.FEATURE_NFC));
+
         AccountManager
                 .get(mContext).addAccount(SetupWizardApp.ACCOUNT_TYPE_GMS, null, null,
                 bundle, null, new AccountManagerCallback<Bundle>() {

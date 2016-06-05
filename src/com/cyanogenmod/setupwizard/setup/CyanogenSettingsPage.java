@@ -91,8 +91,8 @@ public class CyanogenSettingsPage extends SetupPage {
     private static void writeDisableNavkeysOption(Context context, boolean enabled) {
         final SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
-        CMSettings.Secure.putInt(context.getContentResolver(),
-                CMSettings.Secure.DEV_FORCE_SHOW_NAVBAR, enabled ? 1 : 0);
+        CMSettings.Global.putInt(context.getContentResolver(),
+                CMSettings.Global.DEV_FORCE_SHOW_NAVBAR, enabled ? 1 : 0);
         CMHardwareManager hardware = CMHardwareManager.getInstance(context);
         hardware.set(CMHardwareManager.FEATURE_KEY_DISABLE, enabled);
 
@@ -148,7 +148,7 @@ public class CyanogenSettingsPage extends SetupPage {
                     SetupStats.Label.CHECKED,
                     String.valueOf(privacyData.getBoolean(KEY_APPLY_DEFAULT_THEME)));
             Log.i(TAG, "Applying default theme");
-            final ThemeManager tm = ThemeManager.getInstance();
+            final ThemeManager tm = ThemeManager.getInstance(mContext);
             tm.applyDefaultTheme();
 
         } else {

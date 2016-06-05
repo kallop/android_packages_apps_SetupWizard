@@ -26,6 +26,8 @@ import android.provider.Settings;
 
 import com.cyanogenmod.setupwizard.util.SetupWizardUtils;
 
+import cyanogenmod.providers.CMSettings;
+
 public class SetupWizardApp extends Application {
 
     public static final String TAG = SetupWizardApp.class.getSimpleName();
@@ -55,6 +57,7 @@ public class SetupWizardApp extends Application {
     public static final String EXTRA_DETAILS = "details";
     public static final String EXTRA_FRAGMENT = "fragment";
     public static final String EXTRA_ACTION_ID = "actionId";
+    public static final String EXTRA_SUPRESS_D2D_SETUP = "suppress_device_to_device_setup";
 
     public static final String KEY_DETECT_CAPTIVE_PORTAL = "captive_portal_detection_enabled";
 
@@ -72,6 +75,7 @@ public class SetupWizardApp extends Application {
     public static final int REQUEST_CODE_SETUP_BLUETOOTH= 5;
     public static final int REQUEST_CODE_UNLOCK = 6;
     public static final int REQUEST_CODE_SETUP_FINGERPRINT = 7;
+    public static final int REQUEST_CODE_VENDOR_SETUP_GMS = 8;
 
     public static final int RADIO_READY_TIMEOUT = 10 * 1000;
 
@@ -107,6 +111,8 @@ public class SetupWizardApp extends Application {
                         Settings.Global.putInt(getContentResolver(), Settings.Global.DEVICE_PROVISIONED, 1);
                         Settings.Secure.putInt(getContentResolver(),
                                 Settings.Secure.USER_SETUP_COMPLETE, 1);
+                        CMSettings.Secure.putInt(getContentResolver(),
+                                CMSettings.Secure.CM_SETUP_WIZARD_COMPLETED, 1);
                         SetupWizardUtils.disableGMSSetupWizard(SetupWizardApp.this);
                         SetupWizardUtils.disableSetupWizard(SetupWizardApp.this);
                         if (!isOwner) {
@@ -145,9 +151,13 @@ public class SetupWizardApp extends Application {
     }
 
     public void disableStatusBar() {
-        mStatusBarManager.disable(StatusBarManager.DISABLE_EXPAND | StatusBarManager.DISABLE_NOTIFICATION_ALERTS
-                | StatusBarManager.DISABLE_NOTIFICATION_TICKER | StatusBarManager.DISABLE_RECENT | StatusBarManager.DISABLE_HOME
-                | StatusBarManager.DISABLE_SEARCH);
+        mStatusBarManager.disable(StatusBarManager.DISABLE_EXPAND |
+                StatusBarManager.DISABLE_NOTIFICATION_ALERTS |
+                StatusBarManager.DISABLE_NOTIFICATION_ICONS |
+                StatusBarManager.DISABLE_NOTIFICATION_TICKER |
+                StatusBarManager.DISABLE_RECENT |
+                StatusBarManager.DISABLE_HOME |
+                StatusBarManager.DISABLE_SEARCH);
     }
 
     public void enableStatusBar() {

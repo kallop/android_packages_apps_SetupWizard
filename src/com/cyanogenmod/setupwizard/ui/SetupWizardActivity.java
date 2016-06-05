@@ -32,6 +32,7 @@ import android.os.UserHandle;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewAnimationUtils;
@@ -41,6 +42,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 
+import com.android.setupwizardlib.util.SystemBarHelper;
 import com.cyanogenmod.setupwizard.R;
 import com.cyanogenmod.setupwizard.SetupWizardApp;
 import com.cyanogenmod.setupwizard.cmstats.SetupStats;
@@ -51,6 +53,7 @@ import com.cyanogenmod.setupwizard.setup.SetupDataCallbacks;
 import com.cyanogenmod.setupwizard.util.EnableAccessibilityController;
 import com.cyanogenmod.setupwizard.util.SetupWizardUtils;
 
+import cyanogenmod.providers.CMSettings;
 import cyanogenmod.themes.ThemeManager;
 
 import java.util.ArrayList;
@@ -62,11 +65,6 @@ public class SetupWizardActivity extends Activity implements SetupDataCallbacks,
     private static final String TAG = SetupWizardActivity.class.getSimpleName();
     private static final String KEY_LAST_PAGE_TAG = "last_page_tag";
 
-    private static final int UI_FLAGS = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_IMMERSIVE
-            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
 
     private View mRootView;
     private View mButtonBar;
@@ -93,25 +91,13 @@ public class SetupWizardActivity extends Activity implements SetupDataCallbacks,
         if (!isOwner) {
             finish();
         }
-        final View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(UI_FLAGS);
-        decorView.setOnSystemUiVisibilityChangeListener(
-                new View.OnSystemUiVisibilityChangeListener() {
-
-                    @Override
-                    public void onSystemUiVisibilityChange(int visibility) {
-                        if ((visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
-                            decorView.setSystemUiVisibility(UI_FLAGS);
-                        }
-                    }
-                });
+        SystemBarHelper.hideSystemBars(getWindow());
         if (sLaunchTime == 0) {
             SetupStats.addEvent(SetupStats.Categories.APP_LAUNCH, TAG);
             sLaunchTime = System.nanoTime();
         }
         setContentView(R.layout.setup_main);
         mRootView = findViewById(R.id.root);
-        mRootView.setSystemUiVisibility(UI_FLAGS);
         mReveal = (ImageView)mRootView.findViewById(R.id.reveal);
         mButtonBar = findViewById(R.id.button_bar);
         mFinishingProgressBar = (ProgressBar)findViewById(R.id.finishing_bar);
@@ -184,8 +170,6 @@ public class SetupWizardActivity extends Activity implements SetupDataCallbacks,
 
     @Override
     protected void onResume() {
-        final View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(UI_FLAGS);
         super.onResume();
         if (isFinishing()) {
             return;
@@ -353,8 +337,12 @@ public class SetupWizardActivity extends Activity implements SetupDataCallbacks,
         mFinishingProgressBar.setVisibility(View.VISIBLE);
         mFinishingProgressBar.setIndeterminate(true);
         mFinishingProgressBar.startAnimation(fadeIn);
-        final ThemeManager tm = ThemeManager.getInstance();
-        tm.addClient(this);
+        final ThemeManager tm = ThemeManager.getInstance(this);
+        try {
+            tm.registerThemeChangeListener(this);
+        } catch (Exception e) {
+            Log.w(TAG, "ThemeChangeListener already registered");
+        }
         mSetupData.finishPages();
     }
 
@@ -466,11 +454,13 @@ public class SetupWizardActivity extends Activity implements SetupDataCallbacks,
                 Settings.Global.putInt(getContentResolver(), Settings.Global.DEVICE_PROVISIONED, 1);
                 Settings.Secure.putInt(getContentResolver(),
                         Settings.Secure.USER_SETUP_COMPLETE, 1);
+                CMSettings.Secure.putInt(getContentResolver(),
+                        CMSettings.Secure.CM_SETUP_WIZARD_COMPLETED, 1);
                 if (mEnableAccessibilityController != null) {
                     mEnableAccessibilityController.onDestroy();
                 }
-                final ThemeManager tm = ThemeManager.getInstance();
-                tm.removeClient(SetupWizardActivity.this);
+                final ThemeManager tm = ThemeManager.getInstance(SetupWizardActivity.this);
+                tm.unregisterThemeChangeListener(SetupWizardActivity.this);
                 SetupStats.sendEvents(SetupWizardActivity.this);
                 SetupWizardUtils.disableGMSSetupWizard(SetupWizardActivity.this);
                 final WallpaperManager wallpaperManager =
